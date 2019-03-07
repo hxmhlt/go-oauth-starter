@@ -1,13 +1,13 @@
-package oauth2
+package go_oauth2
 
 import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
-	"gopkg.in/gin-gonic/gin.v1"
 	"net/http"
 	"strings"
 	"fmt"
 	"time"
+	"github.com/gin-gonic/gin"
 )
 
 // Strips 'TOKEN ' prefix from token string
@@ -35,9 +35,7 @@ var myAuth2Extractor = &request.MultiExtractor{
 }
 
 // A helper to write user_id and user_model to the context
-func updateContextUserModel(c *gin.Context, user_id uint,userModel map[string]interface {} ) {
-
-	c.Set("user_id", user_id)
+func updateContextUserModel(c *gin.Context,userModel map[string]interface {} ) {
 	c.Set("user_model", userModel)
 }
 // You can custom middlewares yourself as the doc: https://github.com/gin-gonic/gin#custom-middleware
@@ -65,9 +63,12 @@ func AuthMiddleware(key []byte,auto401 bool) gin.HandlerFunc {
 				fmt.Errorf("the token is expir")
 				return
 			}
-			userId := claims["user_data"].(map[string]interface {})["Id"].(float64)
-			UserModel := claims["user_data"].(map[string]interface {})["User"].(map[string]interface {})
-			updateContextUserModel(c, uint(userId),UserModel)
+
+			if claims["user_data"] != nil{
+				UserModel := claims["user_data"].(map[string]interface {})
+				updateContextUserModel(c,UserModel)
+			}
+
 		}
 	}
 }

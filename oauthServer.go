@@ -1,22 +1,23 @@
-package oauth2
-
+package go_oauth2
 
 import (
-	"github.com/RangelReale/osin"
-	"github.com/felipeweb/osin-mysql"
-	"github.com/RangelReale/osin/example"
 	"crypto/rsa"
-	"github.com/dgrijalva/jwt-go"
-	"fmt"
-	"gopkg.in/gin-gonic/gin.v1"
-	"time"
 	"database/sql"
+	"fmt"
+	"github.com/RangelReale/osin"
+	"github.com/RangelReale/osin/example"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/felipeweb/osin-mysql"
+	"github.com/gin-gonic/gin"
+	"time"
 )
 type OauthServer struct{
 	server *osin.Server
 	db *sql.DB
 	tokenKey []byte
 	passwordAccessTypeFilter func(ctx *gin.Context)(bool,interface{})
+	clientAccessTypeFilter func(ctx *gin.Context)(bool,interface{})
+	customTokenTypeFilter func(ctx *gin.Context)(bool,interface{})
 }
 
 type AccessTokenGenJWT struct {
@@ -70,23 +71,28 @@ func newServerConfig() *osin.ServerConfig {
 	}
 }
 //构造函数
-func NewOauthServer(db *sql.DB,tokenKey []byte, passwordAccessTypeFilter func(ctx *gin.Context)(bool,interface{})) *OauthServer{
+func NewOauthServer(db *sql.DB,tablePrefix string,tokenKey []byte,createSchemas bool, passwordAccessTypeFilter func(ctx *gin.Context)(bool,interface{}),clientAccessTypeFilter func(ctx *gin.Context)(bool,interface{}),customTokenTypeFilter func(ctx *gin.Context)(bool,interface{})) *OauthServer{
 	var oauthServer = new (OauthServer)
 	oauthServer.db = db
 	oauthServer.tokenKey = tokenKey
 	oauthServer.passwordAccessTypeFilter = passwordAccessTypeFilter
+	oauthServer.clientAccessTypeFilter = clientAccessTypeFilter
+	oauthServer.customTokenTypeFilter = customTokenTypeFilter
+	store := mysql.New(oauthServer.db, tablePrefix)
 
-	store := mysql.New(oauthServer.db, "osin_")
-
-	err := store.CreateSchemas()
-	if err != nil {
-		panic(err)
+	if createSchemas {
+		err := store.CreateSchemas()
+		if err != nil {
+			panic(err)
+		}
 	}
+
 	server:= osin.NewServer(newServerConfig(), store);
 
 
 	var accessTokenGenJWT AccessTokenGenJWT
 
+	var err error
 	if accessTokenGenJWT.PrivateKey, err = jwt.ParseRSAPrivateKeyFromPEM(oauthServer.tokenKey); err != nil {
 		fmt.Printf("ERROR: %s\n", err)
 		panic(err)
@@ -115,6 +121,21 @@ func (oauthServer *OauthServer)Authorize(c *gin.Context){
 	osin.OutputJSON(resp, c.Writer, c.Request)
 }
 
+func (oauthServer *OauthServer)CustomToken(c *gin.Context){
+	resp := oauthServer.server.NewResponse()
+	defer resp.Close()
+
+	if ar := oauthServer.server.HandleAccessRequest(resp, c.Request); ar != nil {
+		ar.Authorized ,ar.UserData = oauthServer.customTokenTypeFilter(c)
+		oauthServer.server.FinishAccessRequest(resp, c.Request, ar)
+	}
+	if resp.IsError && resp.InternalError != nil {
+		fmt.Printf("ERROR: %s\n", resp.InternalError)
+	}
+	osin.OutputJSON(resp, c.Writer, c.Request)
+}
+
+
 func (oauthServer *OauthServer)Token(c *gin.Context){
 	resp := oauthServer.server.NewResponse()
 	defer resp.Close()
@@ -131,9 +152,9 @@ func (oauthServer *OauthServer)Token(c *gin.Context){
 		case osin.REFRESH_TOKEN:
 
 		case osin.PASSWORD:
-			ar.Authorized ,ar.UserData = oauthServer.passwordAccessTypeFilter(c);
+			ar.Authorized ,ar.UserData = oauthServer.passwordAccessTypeFilter(c)
 		case osin.CLIENT_CREDENTIALS:
-
+			ar.Authorized ,ar.UserData = oauthServer.clientAccessTypeFilter(c)
 		case osin.ASSERTION:
 
 		}
