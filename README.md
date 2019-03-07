@@ -1,4 +1,4 @@
-# go-oauth-starter
+# go-oauth2
 封装了osin的oauth服务，采用jwt(json web token)token格式，并采用RSA非对称加密算法对token进行安全保护。
 支持授权码模式（还未完成）、密码模式、客户端模式的权限授予，并支持将token等数据持久化。
 
